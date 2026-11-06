@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quản lý chi tiêu</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#6b7385;--bd:#e3e6ec;--ac:#2563eb;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--soft:#eef2ff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1b2029;--tx:#e8ebf2;--mut:#99a1b3;--bd:#2c3340;--ac:#6d9bff;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--soft:#232b3d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12151c;--card:#1b2029;--tx:#e8ebf2;--mut:#99a1b3;--bd:#2c3340;--ac:#6d9bff;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--soft:#232b3d;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 12px}h2{font-size:16px;margin:0 0 10px}
+nav{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto}
+nav button{flex:1;min-width:90px;padding:9px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;cursor:pointer;font:inherit}
+nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.k{color:var(--mut);font-size:13px}.v{font-size:22px;font-weight:700}
+.banner{padding:12px 14px;border-radius:12px;margin-bottom:12px;font-weight:600}
+.b-ok{background:rgba(22,163,74,.13);color:var(--ok)}.b-warn{background:rgba(217,119,6,.15);color:var(--warn)}.b-bad{background:rgba(220,38,38,.14);color:var(--bad)}
+.bar{height:10px;background:var(--bd);border-radius:6px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ac)}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+.btn{padding:10px 14px;border:0;border-radius:10px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer;margin-top:10px}
+.btn.g{background:var(--soft);color:var(--tx)}
+.tx{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--bd)}
+.tx:last-child{border:0}.in{color:var(--ok)}.out{color:var(--bad)}
+.x{background:none;border:0;color:var(--mut);cursor:pointer;font-size:16px}
+.cat{display:grid;grid-template-columns:90px 1fr 90px;gap:8px;align-items:center;margin:6px 0;font-size:14px}
+.tip{font-size:13px;color:var(--mut);margin-top:6px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Quản lý chi tiêu và trả nợ</h1>
+<nav id="nav"></nav>
+<div id="app"></div>
+</main>
+<script>
+var KEY="qlct_v1";
+var CHI=["Ăn uống","Đi lại","Học tập","Giải trí","Mua sắm","Khác"];
+var D={set:{start:0,debt:5000000,cycle:14,thr:200000,next:"",avg:2000000,pd:35,ps:10,saveGoal:1000000,sd:""},tx:[]};
+var tab="home";
+try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);D.set=Object.assign(D.set,o.set);D.tx=o.tx||[]}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function dt(s){return new Date(s+"T12:00:00")}
+function addDays(s,n){var d=dt(s);d.setDate(d.getDate()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function diff(a,b){return Math.round((dt(a)-dt(b))/864e5)}
+function vnd(n){return Math.round(n).toLocaleString("vi-VN")+" đ"}
+function esc(t){return String(t||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+if(!D.set.next)D.set.next=addDays(today(),D.set.cycle);
+function sum(f){return D.tx.filter(f).reduce(function(a,t){return a+t.amt},0)}
+function calc(){
+ var inc=sum(function(t){return t.type=="in"}),exp=sum(function(t){return t.type=="out"}),dp=sum(function(t){return t.type=="debt"}),sv=sum(function(t){return t.type=="save"});
+ var bal=D.set.start+inc-exp-dp-sv,t0=today();
+ var left=Math.max(1,diff(D.set.next,t0));
+ var avail=Math.max(0,bal-D.set.thr);
+ var daily=avail/left;
+ var spentToday=sum(function(t){return t.type=="out"&&t.date==t0});
+ return{bal:bal,debt:Math.max(0,D.set.debt-dp),dp:dp,sv:sv,left:left,daily:daily,spentToday:spentToday,inc:inc}
+}
+function render(){
+ var tabs=[["home","Tổng quan"],["tx","Giao dịch"],["plan","Kế hoạch"],["set","Cài đặt"]];
+ document.getElementById("nav").innerHTML=tabs.map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>'}).join("");
+ document.getElementById("app").innerHTML={home:home,tx:txv,plan:plan,set:settings}[tab]();
+}
+function go(t){tab=t;render()}
+function home(){
+ var c=calc(),S=D.set,h="";
+ var over=diff(today(),S.next)>=0;
+ if(c.bal<=S.thr||over){h+='<div class="banner b-bad">Đã đến lúc xin trợ cấp: '+(c.bal<=S.thr?'số dư chỉ còn '+vnd(c.bal)+' (ngưỡng '+vnd(S.thr)+')':'đã đến ngày dự kiến')+'.</div>'}
+ else if(c.left<=2||c.bal<=S.thr*1.5){h+='<div class="banner b-warn">Sắp đến lúc xin trợ cấp. Còn '+c.left+' ngày, hãy nhắn gia đình trước khi hết tiền.</div>'}
+ else h+='<div class="banner b-ok">Tình hình ổn. Còn '+c.left+' ngày đến kỳ xin trợ cấp ('+S.next.split("-").reverse().join("/")+').</div>';
+ var pct=c.daily>0?Math.min(100,c.spentToday/c.daily*100):(c.spentToday>0?100:0);
+ var rem=c.daily-c.spentToday;
+ h+='<div class="grid"><div class="card"><div class="k">Số dư hiện tại</div><div class="v">'+vnd(c.bal)+'</div></div>'+
+ '<div class="card"><div class="k">Nợ còn lại</div><div class="v" style="color:var(--bad)">'+vnd(c.debt)+'</div></div>'+
+ '<div class="card"><div class="k">Tiết kiệm</div><div class="v" style="color:var(--ok)">'+vnd(c.sv)+'</div></div></div>';
+ h+='<div class="card"><h2>Hạn mức chi hôm nay</h2><div class="k">Số dư trừ khoản giữ lại ('+vnd(S.thr)+') chia đều cho '+c.left+' ngày</div>'+
+ '<div class="v">'+vnd(c.daily)+' / ngày</div><div class="bar" style="margin:8px 0"><i style="width:'+pct+'%;background:'+(pct>=100?'var(--bad)':pct>75?'var(--warn)':'var(--ok)')+'"></i></div>'+
+ '<div>Đã chi hôm nay: <b>'+vnd(c.spentToday)+'</b> · '+(rem>=0?'còn được chi <b>'+vnd(rem)+'</b>':'<b style="color:var(--bad)">vượt '+vnd(-rem)+'</b>')+'</div></div>';
+ h+='<div class="card"><h2>Thêm nhanh khoản chi</h2><div class="row"><input id="qa" type="number" inputmode="numeric" placeholder="Số tiền"><select id="qc">'+CHI.map(function(x){return'<option>'+x+'</option>'}).join("")+'</select><input id="qn" placeholder="Ghi chú"></div><button class="btn" onclick="quick()">Lưu khoản chi</button></div>';
+ var from=addDays(today(),-13),cat={},tot=0;
+ D.tx.forEach(function(t){if(t.type=="out"&&t.date>=from){cat[t.cat]=(cat[t.cat]||0)+t.amt;tot+=t.amt}});
+ h+='<div class="card"><h2>Chi tiêu 14 ngày gần nhất</h2>';
+ var keys=Object.keys(cat).sort(function(a,b){return cat[b]-cat[a]});
+ h+=keys.length?keys.map(function(k){return'<div class="cat"><span>'+esc(k)+'</span><div class="bar"><i style="width:'+cat[k]/tot*100+'%"></i></div><span style="text-align:right">'+vnd(cat[k])+'</span></div>'}).join(""):'<div class="k">Chưa có dữ liệu.</div>';
+ return h+'</div>';
+}
+function quick(){
+ var a=+document.getElementById("qa").value;if(!(a>0))return;
+ D.tx.push({id:Date.now(),date:today(),type:"out",cat:document.getElementById("qc").value,amt:a,note:document.getElementById("qn").value});
+ save();render();
+}
+function txv(){
+ var h='<div class="card"><h2>Thêm giao dịch</h2><div class="row"><div><label>Loại</label><select id="ty" onchange="catOpts()"><option value="out">Chi tiêu</option><option value="in">Nhận tiền</option><option value="debt">Trả nợ</option><option value="save">Gửi tiết kiệm</option></select></div>'+
+ '<div><label>Số tiền (đ)</label><input id="am" type="number" inputmode="numeric"></div><div><label>Ngày</label><input id="da" type="date" value="'+today()+'"></div></div>'+
+ '<div class="row"><div><label>Danh mục</label><select id="ca"></select></div><div><label>Ghi chú</label><input id="no"></div></div>'+
+ '<button class="btn" onclick="addTx()">Lưu</button><div class="tip">Chọn "Nhận tiền" - "Trợ cấp" để tự động đặt lại ngày xin trợ cấp kế tiếp.</div></div>';
+ h+='<div class="card"><h2>Lịch sử</h2>';
+ var l=D.tx.slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:b.id-a.id}).slice(0,80);
+ var nm={out:"",in:"",debt:"Trả nợ",save:"Tiết kiệm"};
+ h+=l.length?l.map(function(t){var p=t.type=="in";return'<div class="tx"><div><b>'+(t.cat||nm[t.type])+'</b> <span class="k">'+t.date.split("-").reverse().join("/")+(t.note?' · '+esc(t.note):'')+'</span></div><div><span class="'+(p?'in':'out')+'">'+(p?'+':'-')+vnd(t.amt)+'</span> <button class="x" title="Xóa" onclick="del('+t.id+')">✕</button></div></div>'}).join(""):'<div class="k">Chưa có giao dịch.</div>';
+ setTimeout(catOpts,0);
+ return h+'</div>';
+}
+function catOpts(){
+ var t=document.getElementById("ty");if(!t)return;
+ var o={out:CHI,in:["Trợ cấp","Thu nhập thêm"],debt:["Trả nợ"],save:["Tiết kiệm"]}[t.value];
+ document.getElementById("ca").innerHTML=o.map(function(x){return'<option>'+x+'</option>'}).join("");
+}
+function addTx(){
+ var a=+document.getElementById("am").value;if(!(a>0))return;
+ var ty=document.getElementById("ty").value,d=document.getElementById("da").value||today(),ca=document.getElementById("ca").value;
+ D.tx.push({id:Date.now(),date:d,type:ty,cat:ca,amt:a,note:document.getElementById("no").value});
+ if(ty=="in"&&ca=="Trợ cấp")D.set.next=addDays(d,D.set.cycle);
+ save();render();
+}
+function del(id){D.tx=D.tx.filter(function(t){return t.id!=id});save();render()}
+function plan(){
+ var S=D.set,c=calc(),A=S.avg,pd=S.pd/100,ps=S.ps/100,pl=1-pd-ps;
+ var payD=A*pd,payS=A*ps,live=A*pl;
+ var cyc=payD>0?Math.ceil(c.debt/payD):0;
+ var days=cyc*S.cycle;
+ var end=cyc?addDays(today(),days):today();
+ var sc=payS>0?Math.max(0,Math.ceil((S.saveGoal-c.sv)/payS)):0;
+ var h='<div class="card"><h2>Quy tắc chia mỗi lần nhận trợ cấp</h2><div class="row"><div><label>Số tiền trợ cấp dự kiến (đ)</label><input id="pa" type="number" value="'+A+'" oninput="pu()"></div>'+
+ '<div><label>% trả nợ</label><input id="pp" type="number" value="'+S.pd+'" oninput="pu()"></div><div><label>% tiết kiệm</label><input id="ps" type="number" value="'+S.ps+'" oninput="pu()"></div></div></div>';
+ h+='<div class="grid"><div class="card"><div class="k">Trả nợ mỗi kỳ</div><div class="v">'+vnd(payD)+'</div></div><div class="card"><div class="k">Tiết kiệm mỗi kỳ</div><div class="v">'+vnd(payS)+'</div></div><div class="card"><div class="k">Được tiêu mỗi kỳ</div><div class="v">'+vnd(live)+'</div></div></div>';
+ h+='<div class="card"><h2>Dự báo</h2>';
+ if(pl<0.3)h+='<div class="banner b-warn">Phần còn lại để sống chỉ còn '+Math.round(pl*100)+'%. Quá thấp, bạn dễ phải xin thêm giữa kỳ.</div>';
+ h+='<p>Hạn mức chi mỗi ngày khi nhận đủ: <b>'+vnd(live/S.cycle)+'</b></p>';
+ h+='<p>Trả hết nợ còn '+vnd(c.debt)+': '+(cyc?'khoảng <b>'+cyc+' lần trợ cấp</b> (~'+Math.round(days/7)+' tuần, dự kiến '+end.split("-").reverse().join("/")+')':'<b>đã hết nợ</b>')+'</p>';
+ h+='<p>Quỹ dự phòng '+vnd(c.sv)+' / mục tiêu '+vnd(S.saveGoal)+': '+(sc?'cần thêm <b>'+sc+' kỳ</b>':'<b>đã đạt</b>')+'</p>';
+ h+='<div class="bar"><i style="width:'+Math.min(100,S.debt?(1-c.debt/S.debt)*100:100)+'%;background:var(--ok)"></i></div><div class="tip">Tiến độ trả nợ: '+Math.round(S.debt?(1-c.debt/S.debt)*100:100)+'%</div></div>';
+ h+='<div class="card"><h2>Gợi ý thói quen</h2><ul style="margin:0;padding-left:18px"><li>Ngay khi nhận trợ cấp, ghi 3 khoản: trả nợ, tiết kiệm, rồi mới tiêu phần còn lại.</li><li>Xin trợ cấp khi số dư chạm ngưỡng ở tab Cài đặt, không đợi hết sạch.</li><li>Khi có thu nhập không thường xuyên, dồn 50% vào nợ để trả nhanh hơn.</li><li>Nếu hạn mức hôm nay đã hết, chuyển phần dư sang ngày mai thay vì vay thêm.</li></ul></div>';
+ return h;
+}
+function pu(){
+ D.set.avg=+document.getElementById("pa").value||0;D.set.pd=+document.getElementById("pp").value||0;D.set.ps=+document.getElementById("ps").value||0;
+ save();var y=window.scrollY;render();window.scrollTo(0,y);
+ var ids=["pa","pp","ps"];
+}
+function settings(){
+ var S=D.set;
+ function f(id,l,v,t){return'<div><label>'+l+'</label><input id="'+id+'" type="'+(t||"number")+'" value="'+v+'"></div>'}
+ return '<div class="card"><h2>Thông số ban đầu</h2><div class="row">'+f("s1","Số dư hiện có (đ)",S.start)+f("s2","Tổng nợ ban đầu (đ)",S.debt)+f("s3","Ngưỡng xin trợ cấp (đ)",S.thr)+'</div><div class="row">'+f("s4","Chu kỳ xin trợ cấp (ngày)",S.cycle)+f("s5","Ngày xin trợ cấp kế tiếp",S.next,"date")+f("s6","Mục tiêu quỹ dự phòng (đ)",S.saveGoal)+'</div><button class="btn" onclick="ss()">Lưu cài đặt</button>'+
+ '<div class="tip">Số dư hiện có là số tiền bạn đang có lúc bắt đầu dùng ứng dụng. Ngưỡng xin trợ cấp nên đủ sống khoảng 3 ngày.</div></div>'+
+ '<div class="card"><h2>Sao lưu dữ liệu</h2><div class="tip">Dữ liệu lưu trong trình duyệt này. Hãy sao chép đoạn mã dưới đây ra Notepad để giữ an toàn, dán lại khi cần khôi phục.</div><textarea id="bk" rows="4">'+esc(JSON.stringify(D))+'</textarea><button class="btn g" onclick="rs()">Khôi phục từ mã</button> <button class="btn g" onclick="if(confirm(\'Xóa toàn bộ dữ liệu?\')){localStorage.removeItem(KEY);location.reload()}">Xóa tất cả</button></div>';
+}
+function ss(){
+ var g=function(i){return document.getElementById(i).value};
+ D.set.start=+g("s1")||0;D.set.debt=+g("s2")||0;D.set.thr=+g("s3")||0;D.set.cycle=+g("s4")||14;D.set.next=g("s5")||addDays(today(),D.set.cycle);D.set.saveGoal=+g("s6")||0;
+ save();tab="home";render();
+}
+function rs(){
+ try{var o=JSON.parse(document.getElementById("bk").value);if(o.set&&o.tx){D=o;save();tab="home";render()}}catch(e){alert("Mã không hợp lệ")}
+}
+render();
+</script>
+</body>
+</html>
